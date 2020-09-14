@@ -17,3 +17,9 @@ Each folder shows an example of a server implementation that overcomes various i
 `destroy.sh` is a wrapper to stop all running clients.
 
 A single client instance can be executed by running `go run client.go -conn=<# connections to establish>`
+
+
+# Attention
+Because of gorilla/websocket not support evented read，there will be some issue when client send message high frequency.
+There is a [discussion](https://github.com/gorilla/websocket/issues/481) about if support evented read.
+

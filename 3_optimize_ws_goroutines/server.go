@@ -5,7 +5,6 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"syscall"
 )
 
 var epoller *epoll
@@ -25,14 +24,14 @@ func wsHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	// Increase resources limitations
-	var rLimit syscall.Rlimit
-	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
-		panic(err)
-	}
-	rLimit.Cur = rLimit.Max
-	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
-		panic(err)
-	}
+	//var rLimit syscall.Rlimit
+	//if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+	//	panic(err)
+	//}
+	//rLimit.Cur = rLimit.Max
+	//if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &rLimit); err != nil {
+	//	panic(err)
+	//}
 
 	// Enable pprof hooks
 	go func() {

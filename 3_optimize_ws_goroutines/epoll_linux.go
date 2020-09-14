@@ -1,9 +1,10 @@
+// +build linux
 package main
 
 import (
+	"github.com/gorilla/websocket"
 	"golang.org/x/sys/unix"
 	"log"
-	"net"
 	"reflect"
 	"sync"
 	"syscall"
@@ -11,7 +12,7 @@ import (
 
 type epoll struct {
 	fd          int
-	connections map[int]net.Conn
+	connections map[int]*websocket.Conn
 	lock        *sync.RWMutex
 }
 
@@ -23,14 +24,16 @@ func MkEpoll() (*epoll, error) {
 	return &epoll{
 		fd:          fd,
 		lock:        &sync.RWMutex{},
-		connections: make(map[int]net.Conn),
+		connections: make(map[int]*websocket.Conn),
 	}, nil
 }
 
-func (e *epoll) Add(conn net.Conn) error {
-	// Extract file descriptor associated with the connection
+func (e *epoll) Add(conn *websocket.Conn) error {
 	fd := websocketFD(conn)
-	err := unix.EpollCtl(e.fd, syscall.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Events: unix.POLLIN | unix.POLLHUP, Fd: int32(fd)})
+	err := unix.EpollCtl(e.fd, syscall.EPOLL_CTL_ADD, fd, &unix.EpollEvent{
+		Events: unix.POLLIN | unix.POLLHUP | unix.POLLNVAL,
+		Fd: int32(fd),
+	})
 	if err != nil {
 		return err
 	}
@@ -43,7 +46,7 @@ func (e *epoll) Add(conn net.Conn) error {
 	return nil
 }
 
-func (e *epoll) Remove(conn net.Conn) error {
+func (e *epoll) Remove(conn *websocket.Conn) error {
 	fd := websocketFD(conn)
 	err := unix.EpollCtl(e.fd, syscall.EPOLL_CTL_DEL, fd, nil)
 	if err != nil {
@@ -58,15 +61,15 @@ func (e *epoll) Remove(conn net.Conn) error {
 	return nil
 }
 
-func (e *epoll) Wait() ([]net.Conn, error) {
-	events := make([]unix.EpollEvent, 100)
+func (e *epoll) Wait() ([]*websocket.Conn, error) {
+	events := make([]unix.EpollEvent, len(e.connections) + 1)
 	n, err := unix.EpollWait(e.fd, events, 100)
 	if err != nil {
 		return nil, err
 	}
 	e.lock.RLock()
 	defer e.lock.RUnlock()
-	var connections []net.Conn
+	var connections []*websocket.Conn
 	for i := 0; i < n; i++ {
 		conn := e.connections[int(events[i].Fd)]
 		connections = append(connections, conn)
@@ -74,16 +77,10 @@ func (e *epoll) Wait() ([]net.Conn, error) {
 	return connections, nil
 }
 
-func websocketFD(conn net.Conn) int {
-	//tls := reflect.TypeOf(conn.UnderlyingConn()) == reflect.TypeOf(&tls.Conn{})
-	// Extract the file descriptor associated with the connection
-	//connVal := reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn").Elem()
-	tcpConn := reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn")
-	//if tls {
-	//	tcpConn = reflect.Indirect(tcpConn.Elem())
-	//}
+func websocketFD(conn *websocket.Conn) int {
+	connVal := reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn").Elem()
+	tcpConn := reflect.Indirect(connVal).FieldByName("conn")
 	fdVal := tcpConn.FieldByName("fd")
 	pfdVal := reflect.Indirect(fdVal).FieldByName("pfd")
-
 	return int(pfdVal.FieldByName("Sysfd").Int())
 }
