@@ -6,7 +6,6 @@ import (
 	"errors"
 	"log"
 	"net"
-	"reflect"
 	"sync"
 	"syscall"
 )
@@ -59,11 +58,7 @@ func (e *epoll) Add(conn net.Conn) error {
 	return nil
 }
 
-func (e *epoll) Remove(conn net.Conn) error {
-	fd := websocketFD(conn)
-	if fd < 0 {
-		return errors.New("")
-	}
+func (e *epoll) Remove(fd int) error {
 	newE := syscall.Kevent_t{
 		Ident:  uint64(fd),
 		Flags:  syscall.EV_DELETE,
@@ -82,7 +77,7 @@ func (e *epoll) Remove(conn net.Conn) error {
 	return nil
 }
 
-func (e *epoll) Wait() ([]net.Conn, error) {
+func (e *epoll) Wait() ([]int, error) {
 	events := make([]syscall.Kevent_t, len(e.connections)+1)
 	n, err := syscall.Kevent(e.fd, nil, events, &syscall.Timespec{
 		Sec:  1000,
@@ -93,18 +88,22 @@ func (e *epoll) Wait() ([]net.Conn, error) {
 	}
 	e.lock.RLock()
 	defer e.lock.RUnlock()
-	var connections []net.Conn
+	var connectionsFD []int
 	for i := 0; i < n; i++ {
-		conn := e.connections[int(events[i].Ident)]
-		connections = append(connections, conn)
+		connectionsFD = append(connectionsFD, int(events[i].Ident))
 	}
-	return connections, nil
+	return connectionsFD, nil
 
 }
 
 func websocketFD(conn net.Conn) int {
-	tcpConn := reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn")
-	fdVal := tcpConn.FieldByName("fd")
-	pfdVal := reflect.Indirect(fdVal).FieldByName("pfd")
-	return int(pfdVal.FieldByName("Sysfd").Int())
+	tln := conn.(*net.TCPConn)
+	f, err := tln.File()
+	if err != nil{
+		return  -1
+	}
+	return int(f.Fd())
 }
+
+
+

@@ -58,17 +58,18 @@ func main() {
 
 func Start() {
 	for {
-		connections, err := epoller.Wait()
+		connectionsFD, err := epoller.Wait()
 		if err != nil {
 			log.Printf("Failed to epoll wait %v", err)
 			continue
 		}
-		for _, conn := range connections {
+		for _, connFD := range connectionsFD {
+			conn := epoller.connections[connFD]
 			if conn == nil {
 				break
 			}
 			if msg, _, err := wsutil.ReadClientData(conn); err != nil {
-				if err := epoller.Remove(conn); err != nil {
+				if err := epoller.Remove(connFD); err != nil {
 					log.Printf("Failed to remove %v", err)
 				}
 				conn.Close()

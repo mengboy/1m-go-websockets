@@ -6,7 +6,6 @@ import (
 	"golang.org/x/sys/unix"
 	"log"
 	"net"
-	"reflect"
 	"sync"
 	"syscall"
 )
@@ -30,7 +29,6 @@ func MkEpoll() (*epoll, error) {
 }
 
 func (e *epoll) Add(conn net.Conn) error {
-	// Extract file descriptor associated with the connection
 	fd := websocketFD(conn)
 	err := unix.EpollCtl(e.fd, syscall.EPOLL_CTL_ADD, fd, &unix.EpollEvent{
 		Events: unix.POLLIN | unix.POLLHUP | unix.POLLNVAL,
@@ -48,8 +46,7 @@ func (e *epoll) Add(conn net.Conn) error {
 	return nil
 }
 
-func (e *epoll) Remove(conn net.Conn) error {
-	fd := websocketFD(conn)
+func (e *epoll) Remove(fd int) error {
 	err := unix.EpollCtl(e.fd, syscall.EPOLL_CTL_DEL, fd, nil)
 	if err != nil {
 		return err
@@ -63,7 +60,7 @@ func (e *epoll) Remove(conn net.Conn) error {
 	return nil
 }
 
-func (e *epoll) Wait() ([]net.Conn, error) {
+func (e *epoll) Wait() ([]int, error) {
 	events := make([]unix.EpollEvent, 100)
 	n, err := unix.EpollWait(e.fd, events, 100)
 	if err != nil {
@@ -71,24 +68,18 @@ func (e *epoll) Wait() ([]net.Conn, error) {
 	}
 	e.lock.RLock()
 	defer e.lock.RUnlock()
-	var connections []net.Conn
+	var connections []int
 	for i := 0; i < n; i++ {
-		conn := e.connections[int(events[i].Fd)]
-		connections = append(connections, conn)
+		connections = append(connections, int(events[i].Fd))
 	}
 	return connections, nil
 }
 
 func websocketFD(conn net.Conn) int {
-	//tls := reflect.TypeOf(conn.UnderlyingConn()) == reflect.TypeOf(&tls.Conn{})
-	// Extract the file descriptor associated with the connection
-	//connVal := reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn").Elem()
-	tcpConn := reflect.Indirect(reflect.ValueOf(conn)).FieldByName("conn")
-	//if tls {
-	//	tcpConn = reflect.Indirect(tcpConn.Elem())
-	//}
-	fdVal := tcpConn.FieldByName("fd")
-	pfdVal := reflect.Indirect(fdVal).FieldByName("pfd")
-
-	return int(pfdVal.FieldByName("Sysfd").Int())
+	tln := conn.(*net.TCPConn)
+	f, err := tln.File()
+	if err != nil{
+		return  -1
+	}
+	return int(f.Fd())
 }
